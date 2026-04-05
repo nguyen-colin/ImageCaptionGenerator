@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "ImageCaptionGenerator",
+			"path": "."
+		},
+		{
+			"name": "archive",
+			"path": "../../Downloads/archive"
+		}
+	],
+	"settings": {}
+}
