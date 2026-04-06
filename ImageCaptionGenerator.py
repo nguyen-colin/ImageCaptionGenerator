@@ -8,6 +8,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
 
 # Define the base directory and paths to images and captions
 BASE_DIR = Path(__file__).resolve().parent
@@ -113,16 +114,13 @@ def split_dataset(images, captions_IDS):
             val_caption.append(caption)
         elif image_id in test_captions_id:
             test_caption.append(caption)
-    return train_caption, val_caption, test_caption
+    return train_caption, val_caption, test_caption, train_caption_id, val_captions_id, test_captions_id
 
-train_caption, val_caption, test_caption = split_dataset(images, captions_IDS)
+train_caption, val_caption, test_caption, train_caption_id, val_captions_id, test_captions_id = split_dataset(images, captions_IDS)
 # print(f"Total captions: {len(images)}")
-# print(f"Number of training samples: {len(train_caption)}")
-# print(f"Number of validation samples: {len(val_caption)}")
-# print(f"Number of test samples: {len(test_caption)}")
-# print(f"Sample training caption: {train_caption[0]}")
-# print(f"Sample validation caption: {val_caption[0]}")
-# print(f"Sample test caption: {test_caption[0]}")
+print(f"Sample training caption: {train_caption[0]}")
+print(f"Sample validation caption: {val_caption[0]}")
+print(f"Sample test caption: {test_caption[0]}")
 
 # Image feature extraction using a pretrained model (ResNet50)
 # include_top=False removes the classifier
@@ -137,3 +135,22 @@ def extract_image_features(image_path, model):
     return features.flatten()
 
 print(extract_image_features(str(BASE_DIR / "archive" / "Images" / images[0]), resnet_model))
+
+train_image_embeddings, val_image_embeddings, test_image_embeddings = {}, {}, {}
+def extract_features_for_dataset(image_path, model, train_captions_id, val_captions_id, test_captions_id, train_image_embeddings, val_image_embeddings, test_image_embeddings):
+    pbar = tqdm(total=len(image_path), position=0)
+    for image_id in image_path:
+        image_embedding = extract_image_features(str(BASE_DIR / "archive" / "Images" / image_id), model)
+        if image_id in train_captions_id:
+            train_image_embeddings[image_id] = image_embedding.flatten()
+        elif image_id in val_captions_id:
+            val_image_embeddings[image_id] = image_embedding.flatten()
+        elif image_id in test_captions_id:
+            test_image_embeddings[image_id] = image_embedding.flatten()
+        pbar.update(1)
+    pbar.close()
+extract_features_for_dataset(images, resnet_model, train_caption_id, val_captions_id, test_captions_id, train_image_embeddings, val_image_embeddings, test_image_embeddings)
+print(f"Extracted image features for training set: {len(train_image_embeddings)}")
+print(f"Extracted image features for validation set: {len(val_image_embeddings)}")
+print(f"Extracted image features for test set: {len(test_image_embeddings)}")
+
