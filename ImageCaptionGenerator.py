@@ -153,4 +153,4 @@ extract_features_for_dataset(images, resnet_model, train_caption_id, val_caption
 print(f"Extracted image features for training set: {len(train_image_embeddings)}")
 print(f"Extracted image features for validation set: {len(val_image_embeddings)}")
 print(f"Extracted image features for test set: {len(test_image_embeddings)}")
-
+  
