@@ -1,12 +1,12 @@
 from pathlib import Path
-from transformers import PreTrainedTokenizerFast
+from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.applications import ResNet50
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.resnet50 import preprocess_input
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import to_categorical, plot_model
 from tensorflow.keras.models import Model, load_model
-from tensorflow.keras.image import load_img
+from tensorflow.keras.preprocessing.image import load_img
 from tensorflow.keras.layers import Input, Dense, LSTM, Embedding, Dropout, add, BatchNormalization
 from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping
 from tensorflow.keras.optimizers import Adam
@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import nltk
+import tensorflow as tf
 
 # Define the base directory and paths to images and captions
 BASE_DIR = Path(__file__).resolve().parent
@@ -99,17 +100,10 @@ captions_IDS = create_caption_ids(captions, cleaned_captions)
 
 visualize_captions(captions_IDS, num_samples=5)
 
-# Function to tokenize captions using a pretrained tokenizer
-def tokenize_captions(captions, tokenizer):
-    tokenized_captions = []
-    for caption in captions:
-        tokens = tokenizer.encode(caption)
-        tokenized_captions.append(tokens)
-    return tokenized_captions
-
-tokenizer = tokenize_captions(captions, PreTrainedTokenizerFast.from_pretrained('bert-base-uncased'))
-vocab_size = len(tokenizer) + 1
-# print(f"Tokens: {tokens}")
+all_captions = [caption.split('\t')[1].strip() for caption in captions_IDS]
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(all_captions)
+vocab_size = len(tokenizer.word_index) + 1
 print(f"Vocabulary Size: {vocab_size}")
 
 # Splitting the dataset into training, validation and test sets
@@ -185,7 +179,7 @@ def data_generator(captions, image_embeddings, tokenizer, max_caption_length, ba
                     x_images.append(image_embeddings[image_id])
                     x_captions.append(in_seq)
                     target.append(out_seq)
-                    yield [np.array(x_images), np.array(x_captions)], np.array(target) # yield the batch of data as a tuple of input and output
+            yield (np.array(x_images), np.array(x_captions)), np.array(target) # yield the batch of data as a tuple of input and output
 
 max_caption_length = max(len(caption.split()) for caption in cleaned_captions) + 2
 cnn_output_dim = resnet_model.output_shape[1] # 2048
@@ -193,8 +187,22 @@ cnn_output_dim = resnet_model.output_shape[1] # 2048
 batch_size_train = 270
 batch_size_val = 150
 
-train_data_generator = data_generator(train_captions, train_image_embeddings, tokenizer, max_caption_length, batch_size_train)
-val_data_generator = data_generator(val_captions, val_image_embeddings, tokenizer, max_caption_length, batch_size_val)
+output_signature = (
+    (
+        tf.TensorSpec(shape=(None, cnn_output_dim), dtype=tf.float32),
+        tf.TensorSpec(shape=(None, max_caption_length), dtype=tf.int32)
+    ),
+    tf.TensorSpec(shape=(None, vocab_size), dtype=tf.float32)
+)
+
+train_data_generator = tf.data.Dataset.from_generator(
+    lambda: data_generator(train_captions, train_image_embeddings, tokenizer, max_caption_length, batch_size_train),
+    output_signature=output_signature
+)
+val_data_generator = tf.data.Dataset.from_generator(
+    lambda: data_generator(val_captions, val_image_embeddings, tokenizer, max_caption_length, batch_size_val),
+    output_signature=output_signature
+)
 
 print(train_data_generator)
 print(val_data_generator)
@@ -217,7 +225,10 @@ captain_model = build_model(cnn_output_dim, max_caption_length, vocab_size)
 optimzer = Adam(learning_rate=0.001, clipnorm=1.0)
 captain_model.compile(loss='categorical_crossentropy', optimizer=optimzer)
 captain_model.summary()
-plot_model(captain_model)
+try:
+    plot_model(captain_model)
+except ImportError as e:
+    print("Skipping model plot because pydot is not installed:", e)
 
 early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
@@ -289,15 +300,16 @@ def beam_search_generator(image_features, K_beams = 3, log = True):
 
 def bleu_metor_score(actual, predicted):
     score_beam = corpus_bleu(actual, predicted, weights=(0.25, 0.25, 0.25, 0.25))
-    metor_beam = np.mean([meteor_score([ref], pred) for ref, pred in zip(actual, predicted)])
+    meteor_beam = np.mean([meteor_score([ref], pred) for ref, pred in zip(actual, predicted)])
     return {
         'BLEU Score': score_beam,
-        'METEOR Score': metor_beam
+        'METEOR Score': meteor_beam
     }
 
 def visualization(data, image_features, beamS_generator, evaluator, num_of_images):
     filenames = list(data.keys()) 
     selected_images = np.random.choice(filenames, num_of_images, replace=False)
+    images_directory = str(BASE_DIR / "archive" / "Images")
     
     fig = plt.figure(figsize=(8,4 * num_of_images))
     subplot_index = 1
@@ -332,6 +344,13 @@ def visualization(data, image_features, beamS_generator, evaluator, num_of_image
     plt.tight_layout()
     plt.show()
 
-visualization(captions_IDS, test_image_embeddings, beam_search_generator, bleu_metor_score, 7)
+caption_dict = {}
+for caption in captions_IDS:
+    image_id, caption_text = caption.split('\t')
+    if image_id not in caption_dict:
+        caption_dict[image_id] = []
+    caption_dict[image_id].append(caption_text.strip())
+
+visualization(caption_dict, test_image_embeddings, beam_search_generator, bleu_metor_score, 7)
 
 
