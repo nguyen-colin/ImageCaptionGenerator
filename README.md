@@ -39,3 +39,5 @@ These ranges are based on previously reported results for similar models, making
 Overall, the objective and evaluation metrics are clearly stated and well motivated. The objective matches the model design, and the use of both BLEU and METEOR provides a more complete and fair evaluation of the generated captions.
 
 ## Dataset: `https://www.kaggle.com/datasets/adityajn105/flickr8k`
+
+This dataset is needed to run the program. Please download it and put the contents in a directory named 'archive'. The captions should directly be in the archives directory and then make another directory inside named 'Images', which contains all of the images.
